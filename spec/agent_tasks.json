@@ -1,0 +1,43 @@
+{
+  "milestones": [
+    {
+      "name": "M1_local_core",
+      "scope": "Local-only. No Supabase yet.",
+      "tasks": [
+        "Initialize Expo project (TypeScript)",
+        "Install deps: expo-sqlite, expo-av, expo-location, expo-file-system, uuid",
+        "Create SQLite tables: entries, place_aliases",
+        "Implement mode selector: transcribe / type / sound",
+        "TRANSCRIBE: press-and-hold record -> create placeholder entry -> run transcription stub -> update entry",
+        "TYPE: create entry from typed text (no audio)",
+        "SOUND: press-and-hold record -> save audio (engine=none) -> entry shows [Audio] duration",
+        "Home/List screen with 3 columns and toggle to show coords column",
+        "Entry detail screen: edit transcript/text + edit location name",
+        "Location alias: on location name edit with coords -> upsert place_aliases by locationKey (geohash precision 8)"
+      ],
+      "acceptance_criteria": [
+        "App runs in Expo Go on Android",
+        "User can create entries in all 3 modes",
+        "List updates immediately",
+        "Editing location name updates alias mapping for future entries at same locationKey"
+      ]
+    },
+    {
+      "name": "M2_export_and_range_filters",
+      "tasks": [
+        "Implement export modal: day/week/month/3mo/6mo/year",
+        "Generate export text grouped by date",
+        "Copy all export text"
+      ]
+    },
+    {
+      "name": "M3_supabase_sync",
+      "tasks": [
+        "Add Supabase Auth + RLS",
+        "Sync worker for entries and place_aliases",
+        "Threshold pruning based on local limits",
+        "Retry logic with exponential backoff"
+      ]
+    }
+  ]
+}
