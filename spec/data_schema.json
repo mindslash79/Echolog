@@ -1,0 +1,39 @@
+{
+  "entities": {
+    "Entry": {
+      "id": "uuid",
+      "type": "transcript|typed|sound",
+      "createdAt": "iso_datetime",
+      "updatedAt": "iso_datetime",
+      "location": {
+        "name": "string",
+        "lat": "number|null",
+        "lon": "number|null",
+        "accuracyM": "number|null",
+        "locationKey": "string|null"
+      },
+      "transcript": {
+        "text": "string",
+        "engine": "cloud|device|manual|none",
+        "confidence": "number|null"
+      },
+      "audio": {
+        "hasAudio": "boolean",
+        "localPath": "string|null",
+        "durationMs": "number|null"
+      },
+      "sync": {
+        "status": "local_only|queued|synced|error",
+        "lastSyncAt": "iso_datetime|null",
+        "errorMessage": "string|null"
+      }
+    },
+    "PlaceAlias": {
+      "locationKey": "string",
+      "preferredName": "string",
+      "updatedAt": "iso_datetime",
+      "latCenter": "number|null",
+      "lonCenter": "number|null"
+    }
+  }
+}
