@@ -1,0 +1,32 @@
+{
+  "app": {
+    "name": "EchoLog",
+    "version": "1.0.0"
+  },
+  "features": {
+    "modesEnabled": {
+      "transcribe": true,
+      "type": true,
+      "sound": true
+    },
+    "showCoordsDefault": false,
+    "cloudSyncDefault": true
+  },
+  "placeAlias": {
+    "strategy": "geohash",
+    "precision": 8
+  },
+  "exportRanges": [
+    "day",
+    "week",
+    "month",
+    "3_months",
+    "6_months",
+    "year"
+  ],
+  "limits": {
+    "localMaxRows": 5000,
+    "localCacheRows": 2000,
+    "localMaxDbMb": 200
+  }
+}
