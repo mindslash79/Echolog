@@ -136,6 +136,14 @@ export default function App() {
     );
   }
 
+  function onLongPressEntry(item: Entry) {
+    Alert.alert('Actions', undefined, [
+      { text: 'Edit', onPress: () => openTypeForEdit(item) },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteEntry(item.id) },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.container}>
@@ -178,14 +186,8 @@ export default function App() {
             <TouchableOpacity
               style={styles.item}
               onPress={() => onPressEntry(item)}
-              onLongPress={() =>
-                // show simple actions: Edit / Delete
-                Alert.alert('Actions', undefined, [
-                  { text: 'Edit', onPress: () => openTypeForEdit(item) },
-                  { text: 'Delete', style: 'destructive', onPress: () => deleteEntry(item.id) },
-                  { text: 'Cancel', style: 'cancel' },
-                ])
-              }
+              onLongPress={() => onLongPressEntry(item)}
+              delayLongPress={350}
             >
               <Text style={[styles.itemText, styles.colTime]}>{formatDateTime(item.createdAt)}</Text>
               <Text style={[styles.itemText, styles.colPlace]} numberOfLines={1}>
