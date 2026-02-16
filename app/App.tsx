@@ -1,6 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState, useEffect } from 'react';
-import { loadEntries, saveEntries } from './app/src/storage/localStore';
+import { loadEntries, saveEntries } from './src/storage/localStore';
 import {
   Alert,
   FlatList,
@@ -39,14 +39,23 @@ export default function App() {
   const [isTypeModalOpen, setIsTypeModalOpen] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [draftPlace, setDraftPlace] = useState('Unknown place');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const headerHint = useMemo(() => {
     return entries.length === 0 ? 'No entries yet — add one with Type.' : `${entries.length} entries`;
   }, [entries.length]);
 
   function openType() {
+    setEditingId(null);
     setDraftText('');
     setDraftPlace('Unknown place');
+    setIsTypeModalOpen(true);
+  }
+
+  function openTypeForEdit(entry: Entry) {
+    setEditingId(entry.id);
+    setDraftText(entry.content);
+    setDraftPlace(entry.placeName || 'Unknown place');
     setIsTypeModalOpen(true);
   }
 
@@ -56,6 +65,18 @@ export default function App() {
       Alert.alert('Empty', 'Please type something first.');
       return;
     }
+    if (editingId) {
+      // update existing
+      const next = entries.map((e) => (e.id === editingId ? { ...e, content: text, placeName: draftPlace.trim() || 'Unknown place' } : e));
+      setEntries(next);
+      try {
+        await saveEntries(next);
+      } catch (e) {}
+      setEditingId(null);
+      setIsTypeModalOpen(false);
+      return;
+    }
+
     const now = Date.now();
     const newEntry: Entry = {
       id: String(now),
@@ -73,6 +94,21 @@ export default function App() {
       // ignore storage errors for now
     }
     setIsTypeModalOpen(false);
+  }
+
+  async function deleteEntry(id: string) {
+    const ok = await new Promise<boolean>((resolve) => {
+      Alert.alert('Delete', 'Delete this entry?', [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
+    if (!ok) return;
+    const next = entries.filter((e) => e.id !== id);
+    setEntries(next);
+    try {
+      await saveEntries(next);
+    } catch (e) {}
   }
 
   useEffect(() => {
@@ -139,7 +175,18 @@ export default function App() {
           contentContainerStyle={entries.length === 0 ? styles.emptyWrap : undefined}
           ListEmptyComponent={<Text style={styles.empty}>No entries yet.</Text>}
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.item} onPress={() => onPressEntry(item)}>
+            <TouchableOpacity
+              style={styles.item}
+              onPress={() => onPressEntry(item)}
+              onLongPress={() =>
+                // show simple actions: Edit / Delete
+                Alert.alert('Actions', undefined, [
+                  { text: 'Edit', onPress: () => openTypeForEdit(item) },
+                  { text: 'Delete', style: 'destructive', onPress: () => deleteEntry(item.id) },
+                  { text: 'Cancel', style: 'cancel' },
+                ])
+              }
+            >
               <Text style={[styles.itemText, styles.colTime]}>{formatDateTime(item.createdAt)}</Text>
               <Text style={[styles.itemText, styles.colPlace]} numberOfLines={1}>
                 {item.placeName}
