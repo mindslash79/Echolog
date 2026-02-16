@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState, useEffect } from 'react';
 import { loadEntries, saveEntries } from './src/storage/localStore';
+import * as Location from 'expo-location';
 import {
   Alert,
   FlatList,
@@ -45,6 +46,18 @@ export default function App() {
     return entries.length === 0 ? 'No entries yet — add one with Type.' : `${entries.length} entries`;
   }, [entries.length]);
 
+  async function getCoordsIfEnabled(enabled: boolean): Promise<{ lat: number; lng: number } | null> {
+    if (!enabled) return null;
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return null;
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      return { lat: loc.coords.latitude, lng: loc.coords.longitude };
+    } catch {
+      return null;
+    }
+  }
+
   function openType() {
     setEditingId(null);
     setDraftText('');
@@ -65,9 +78,15 @@ export default function App() {
       Alert.alert('Empty', 'Please type something first.');
       return;
     }
+    const coords = await getCoordsIfEnabled(showCoords);
+
     if (editingId) {
-      // update existing
-      const next = entries.map((e) => (e.id === editingId ? { ...e, content: text, placeName: draftPlace.trim() || 'Unknown place' } : e));
+      // update existing; only overwrite coords when we successfully obtained them
+      const next = entries.map((e) =>
+        e.id === editingId
+          ? { ...e, content: text, placeName: draftPlace.trim() || 'Unknown place', lat: coords?.lat ?? e.lat, lng: coords?.lng ?? e.lng }
+          : e
+      );
       setEntries(next);
       try {
         await saveEntries(next);
@@ -83,8 +102,8 @@ export default function App() {
       createdAt: now,
       placeName: draftPlace.trim() || 'Unknown place',
       content: text,
-      lat: 43.6532, // TODO: replace with real GPS
-      lng: -79.3832,
+      lat: coords?.lat,
+      lng: coords?.lng,
     };
     const next = [newEntry, ...entries];
     setEntries(next);
