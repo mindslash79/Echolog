@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState, useEffect } from 'react';
 import { loadEntries, saveEntries } from './src/storage/localStore';
+import { loadPlaceMap, savePlaceMap } from './src/storage/placeStore';
 import * as Location from 'expo-location';
 import {
   Alert,
@@ -41,6 +42,7 @@ export default function App() {
   const [draftText, setDraftText] = useState('');
   const [draftPlace, setDraftPlace] = useState('Unknown place');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [placeMap, setPlaceMap] = useState<Record<string, string>>({});
 
   const headerHint = useMemo(() => {
     return entries.length === 0 ? 'No entries yet — add one with Type.' : `${entries.length} entries`;
@@ -58,6 +60,15 @@ export default function App() {
     }
   }
 
+  function coordKey(lat?: number, lng?: number): string | null {
+    if (lat == null || lng == null) return null;
+    try {
+      return `${lat.toFixed(4)},${lng.toFixed(4)}`;
+    } catch {
+      return null;
+    }
+  }
+
   function openType() {
     setEditingId(null);
     setDraftText('');
@@ -68,7 +79,9 @@ export default function App() {
   function openTypeForEdit(entry: Entry) {
     setEditingId(entry.id);
     setDraftText(entry.content);
-    setDraftPlace(entry.placeName || 'Unknown place');
+    // prefill with mapped place if available
+    const key = coordKey(entry.lat, entry.lng);
+    setDraftPlace(key && placeMap[key] ? placeMap[key] : entry.placeName || 'Unknown place');
     setIsTypeModalOpen(true);
   }
 
@@ -78,13 +91,28 @@ export default function App() {
       Alert.alert('Empty', 'Please type something first.');
       return;
     }
+
     const coords = await getCoordsIfEnabled(showCoords);
+    const newPlaceTrim = draftPlace.trim() || 'Unknown place';
 
     if (editingId) {
-      // update existing; only overwrite coords when we successfully obtained them
+      // update existing entry and possibly update placeMap if coords exist and place changed
+      const prev = entries.find((e) => e.id === editingId) || null;
+      const key = coordKey(prev?.lat, prev?.lng);
+      if (key) {
+        const mapped = placeMap[key];
+        if (mapped !== newPlaceTrim) {
+          const nextMap = { ...placeMap, [key]: newPlaceTrim };
+          setPlaceMap(nextMap);
+          try {
+            await savePlaceMap(nextMap);
+          } catch {}
+        }
+      }
+
       const next = entries.map((e) =>
         e.id === editingId
-          ? { ...e, content: text, placeName: draftPlace.trim() || 'Unknown place', lat: coords?.lat ?? e.lat, lng: coords?.lng ?? e.lng }
+          ? { ...e, content: text, placeName: newPlaceTrim, lat: coords?.lat ?? e.lat, lng: coords?.lng ?? e.lng }
           : e
       );
       setEntries(next);
@@ -96,11 +124,15 @@ export default function App() {
       return;
     }
 
+    // new entry: if coords exist and a mapped place exists for them, prefer mapped name
+    const key = coordKey(coords?.lat, coords?.lng);
+    const placeForNew = key && placeMap[key] ? placeMap[key] : newPlaceTrim;
+
     const now = Date.now();
     const newEntry: Entry = {
       id: String(now),
       createdAt: now,
-      placeName: draftPlace.trim() || 'Unknown place',
+      placeName: placeForNew,
       content: text,
       lat: coords?.lat,
       lng: coords?.lng,
@@ -137,6 +169,8 @@ export default function App() {
         if (stored && Array.isArray(stored) && stored.length > 0) {
           setEntries(stored);
         }
+        const pm = await loadPlaceMap();
+        setPlaceMap(pm || {});
       } catch (e) {
         // ignore load errors
       }
@@ -144,8 +178,10 @@ export default function App() {
   }, []);
 
   function onPressEntry(item: Entry) {
+    const key = coordKey(item.lat, item.lng);
+    const displayPlace = key && placeMap[key] ? placeMap[key] : item.placeName;
     Alert.alert(
-      'Entry',
+      displayPlace,
       item.content,
       [
         { text: 'Copy (later)', onPress: () => {} },
@@ -210,7 +246,10 @@ export default function App() {
             >
               <Text style={[styles.itemText, styles.colTime]}>{formatDateTime(item.createdAt)}</Text>
               <Text style={[styles.itemText, styles.colPlace]} numberOfLines={1}>
-                {item.placeName}
+                {(() => {
+                  const k = coordKey(item.lat, item.lng);
+                  return k && placeMap[k] ? placeMap[k] : item.placeName;
+                })()}
               </Text>
               <Text style={[styles.itemText, styles.colContent]} numberOfLines={2}>
                 {item.content}
