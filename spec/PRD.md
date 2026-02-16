@@ -85,13 +85,19 @@ Each entry contains:
 
 ## Location Behavior
 
-If the user edits a location name:
+Each entry stores two independent fields:
 
-- That name becomes the preferred name for that coordinate region
-- Future entries recorded at the same location automatically use that name
+1. placeName
+- User-defined label
+- Stored per entry
+- Editing affects only that entry
+- Past entries are never automatically modified
 
-LocationKey rule:
-- geohash precision 8
+2. Coordinates (lat/lng)
+- Captured at save time when Coords is ON
+- Optional
+- Not used to rewrite or override placeName
+
 
 ---
 

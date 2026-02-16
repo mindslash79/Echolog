@@ -1,5 +1,6 @@
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState, useEffect } from 'react';
+import { Audio } from 'expo-av';
 import { loadEntries, saveEntries } from './src/storage/localStore';
 import * as Location from 'expo-location';
 import {
@@ -21,6 +22,17 @@ type Entry = {
   content: string;
   lat?: number;
   lng?: number;
+  // optional audio block (matches data schema semantics where present)
+  audio?: {
+    hasAudio: boolean;
+    localPath?: string | null;
+    durationMs?: number | null;
+  };
+  transcript?: {
+    engine?: string;
+    text?: string;
+    confidence?: number | null;
+  };
 };
 
 function formatDateTime(ts: number) {
@@ -41,6 +53,7 @@ export default function App() {
   const [draftText, setDraftText] = useState('');
   const [draftPlace, setDraftPlace] = useState('Unknown place');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
 
   const headerHint = useMemo(() => {
     return entries.length === 0 ? 'No entries yet — add one with Type.' : `${entries.length} entries`;
@@ -115,6 +128,64 @@ export default function App() {
     setIsTypeModalOpen(false);
   }
 
+  async function startRecording() {
+    try {
+      const perm = await Audio.requestPermissionsAsync();
+      if (perm.status !== 'granted') {
+        Alert.alert('Microphone permission denied');
+        return;
+      }
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+      const rec = new Audio.Recording();
+      // prepare and start with default options; cast to any to avoid typing mismatches across SDKs
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      await rec.prepareToRecordAsync({} as any);
+      await rec.startAsync();
+      setRecording(rec);
+    } catch (e) {
+      console.warn('startRecording failed', e);
+      setRecording(null);
+    }
+  }
+
+  async function stopRecordingAndSave() {
+    if (!recording) return;
+    try {
+      await recording.stopAndUnloadAsync();
+    } catch (e) {
+      // ignore
+    }
+    try {
+      const uri = recording.getURI();
+      const status = await recording.getStatusAsync();
+      const durationMs = status?.durationMillis ?? null;
+
+      // attach as new sound entry
+      const coords = await getCoordsIfEnabled(showCoords);
+      const now = Date.now();
+      const newEntry: Entry = {
+        id: String(now),
+        createdAt: now,
+        placeName: 'Unknown place',
+        content: '',
+        lat: coords?.lat,
+        lng: coords?.lng,
+        transcript: { engine: 'none' },
+        audio: { hasAudio: !!uri, localPath: uri ?? null, durationMs },
+      };
+      const next = [newEntry, ...entries];
+      setEntries(next);
+      try {
+        await saveEntries(next);
+      } catch (e) {}
+    } catch (e) {
+      console.warn('save recording failed', e);
+    } finally {
+      setRecording(null);
+    }
+  }
+
   async function deleteEntry(id: string) {
     const ok = await new Promise<boolean>((resolve) => {
       Alert.alert('Delete', 'Delete this entry?', [
@@ -143,16 +214,30 @@ export default function App() {
     })();
   }, []);
 
+  async function playAudio(uri: string) {
+    try {
+      const { sound } = await Audio.Sound.createAsync({ uri });
+      await sound.playAsync();
+    } catch (e) {
+      console.warn('playAudio failed', e);
+      Alert.alert('Playback failed');
+    }
+  }
+
   function onPressEntry(item: Entry) {
-    Alert.alert(
-      'Entry',
-      item.content,
-      [
-        { text: 'Copy (later)', onPress: () => {} },
-        { text: 'OK' },
-      ],
-      { cancelable: true }
-    );
+    if (item.audio?.hasAudio && item.audio.localPath) {
+      Alert.alert('Entry', item.content || 'Audio entry', [
+        { text: 'Play', onPress: () => playAudio(item.audio!.localPath!) },
+        { text: 'Edit', onPress: () => openTypeForEdit(item) },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteEntry(item.id) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+      return;
+    }
+    Alert.alert('Entry', item.content, [
+      { text: 'Copy (later)', onPress: () => {} },
+      { text: 'OK' },
+    ]);
   }
 
   function onLongPressEntry(item: Entry) {
@@ -168,15 +253,7 @@ export default function App() {
       <View style={styles.container}>
         <Text style={styles.title}>Echolog</Text>
 
-        <View style={styles.row}>
-          <TouchableOpacity style={styles.button} onPress={() => Alert.alert('Record', 'Next step: audio recording')}>
-            <Text style={styles.buttonText}>🎤 Record</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.button} onPress={openType}>
-            <Text style={styles.buttonText}>⌨️ Type</Text>
-          </TouchableOpacity>
-        </View>
+        {/* top area spacer — main actions moved to bottom bar */}
 
         <View style={styles.toolsRow}>
           <TouchableOpacity
@@ -199,7 +276,7 @@ export default function App() {
         <FlatList
           data={entries}
           keyExtractor={(it) => it.id}
-          contentContainerStyle={entries.length === 0 ? styles.emptyWrap : undefined}
+          contentContainerStyle={entries.length === 0 ? [styles.emptyWrap, { paddingBottom: 120 }] : { paddingBottom: 120 }}
           ListEmptyComponent={<Text style={styles.empty}>No entries yet.</Text>}
           renderItem={({ item }) => (
             <TouchableOpacity
@@ -223,6 +300,21 @@ export default function App() {
             </TouchableOpacity>
           )}
         />
+
+        {/* Bottom action bar (fixed) */}
+        <View style={styles.bottomBar}>
+          <TouchableOpacity
+            style={styles.button}
+            onPressIn={startRecording}
+            onPressOut={stopRecordingAndSave}
+          >
+            <Text style={styles.buttonText}>{recording ? '● Recording...' : '🎤 Hold to Record'}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.button} onPress={openType}>
+            <Text style={styles.buttonText}>⌨️ Type</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* Type Modal */}
         <Modal visible={isTypeModalOpen} animationType="slide" transparent>
@@ -346,4 +438,16 @@ const styles = StyleSheet.create({
   modalBtnGhost: { backgroundColor: '#232326' },
   modalBtnPrimary: { backgroundColor: '#2f2f35' },
   modalBtnText: { color: 'white', fontSize: 16 },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#111',
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderTopWidth: 1,
+    borderColor: '#222',
+  },
 });
